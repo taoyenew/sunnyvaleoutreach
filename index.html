@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gospel Outreach Report</title>
+
+  <!-- Cloudflare Turnstile -->
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --green:   #2d7a4f;
+      --green-l: #e8f5ee;
+      --red:     #c0392b;
+      --gray:    #6b7280;
+      --border:  #d1d5db;
+      --bg:      #f9fafb;
+      --white:   #ffffff;
+      --text:    #111827;
+      --radius:  10px;
+      --shadow:  0 2px 12px rgba(0,0,0,.08);
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 16px 48px;
+    }
+
+    header {
+      text-align: center;
+      margin-bottom: 28px;
+      max-width: 540px;
+      width: 100%;
+    }
+    header .church-name {
+      font-size: 0.85rem;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--green);
+      opacity: 0.7;
+      margin-bottom: 6px;
+    }
+    header h1 { font-size: 1.5rem; font-weight: 700; color: var(--green); }
+    header p  { font-size: 0.92rem; color: var(--gray); margin-top: 6px; line-height: 1.5; }
+
+    .card {
+      background: var(--white);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 28px 24px;
+      width: 100%;
+      max-width: 540px;
+    }
+
+    .field { margin-bottom: 22px; }
+    label {
+      display: block;
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+    label .opt { font-weight: 400; color: var(--gray); }
+
+    input[type="text"],
+    textarea {
+      width: 100%;
+      border: 1.5px solid var(--border);
+      border-radius: 8px;
+      padding: 11px 14px;
+      font-size: 1rem;
+      font-family: inherit;
+      color: var(--text);
+      background: var(--white);
+      transition: border-color .15s;
+      outline: none;
+    }
+    input[type="text"]:focus,
+    textarea:focus { border-color: var(--green); }
+
+    textarea { resize: vertical; min-height: 160px; line-height: 1.6; }
+
+    /* File upload zone */
+    .upload-zone {
+      border: 2px dashed var(--border);
+      border-radius: 8px;
+      padding: 24px 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .15s, background .15s;
+      position: relative;
+    }
+    .upload-zone:hover, .upload-zone.drag { border-color: var(--green); background: var(--green-l); }
+    .upload-zone input[type="file"] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+    }
+    .upload-zone .icon { font-size: 2rem; margin-bottom: 8px; }
+    .upload-zone p { font-size: 0.88rem; color: var(--gray); line-height: 1.5; }
+    .upload-zone strong { color: var(--green); }
+
+    /* File list */
+    #fileList { margin-top: 12px; }
+    .file-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      background: var(--bg);
+      border-radius: 6px;
+      margin-bottom: 6px;
+      font-size: 0.85rem;
+    }
+    .file-item .fname { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .file-item .fsize { color: var(--gray); white-space: nowrap; }
+    .file-item .fremove {
+      background: none; border: none; cursor: pointer;
+      color: var(--gray); font-size: 1rem; padding: 2px 4px; line-height: 1;
+    }
+    .file-item .fremove:hover { color: var(--red); }
+
+    /* Progress bar */
+    .progress-wrap {
+      display: none;
+      margin-top: 8px;
+    }
+    .progress-wrap.show { display: block; }
+    .progress-label {
+      display: flex; justify-content: space-between;
+      font-size: 0.8rem; color: var(--gray); margin-bottom: 4px;
+    }
+    .progress-bar-bg {
+      height: 6px; background: var(--border); border-radius: 99px; overflow: hidden;
+    }
+    .progress-bar-fill {
+      height: 100%; background: var(--green); border-radius: 99px;
+      width: 0%; transition: width .2s;
+    }
+
+    /* Turnstile */
+    .turnstile-wrap { margin-bottom: 20px; }
+
+    /* Submit button */
+    .btn-submit {
+      width: 100%;
+      background: var(--green);
+      color: var(--white);
+      border: none;
+      border-radius: 8px;
+      padding: 14px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .15s, opacity .15s;
+      letter-spacing: .01em;
+    }
+    .btn-submit:hover:not(:disabled) { background: #235f3d; }
+    .btn-submit:disabled { opacity: .55; cursor: not-allowed; }
+
+    /* Status messages */
+    .msg {
+      display: none;
+      border-radius: 8px;
+      padding: 14px 16px;
+      font-size: 0.92rem;
+      line-height: 1.5;
+      margin-top: 16px;
+    }
+    .msg.show { display: block; }
+    .msg.success { background: var(--green-l); color: #1a5c38; border: 1px solid #a7d9bc; }
+    .msg.error   { background: #fdf0ee; color: var(--red); border: 1px solid #f5b7b1; }
+
+    /* Honeypot — invisible to humans */
+    .hp { position: absolute; left: -9999px; opacity: 0; pointer-events: none; tabindex: -1; }
+
+    footer {
+      margin-top: 28px;
+      font-size: 0.78rem;
+      color: var(--gray);
+      text-align: center;
+      max-width: 400px;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="church-name">Church in Sunnyvale</div>
+    <h1>Gospel Outreach Report</h1>
+    <p>Share what the Lord did through your team this week.<br>No login needed — just your name and a brief record.</p>
+  </header>
+
+  <div class="card">
+    <form id="outreachForm" novalidate>
+
+      <!-- Honeypot (bots fill this, humans don't see it) -->
+      <div class="hp" aria-hidden="true">
+        <label for="website">Website</label>
+        <input type="text" id="website" name="website" autocomplete="off" tabindex="-1" />
+      </div>
+
+      <!-- Full Name -->
+      <div class="field">
+        <label for="fullName">Full Name</label>
+        <input
+          type="text"
+          id="fullName"
+          name="fullName"
+          placeholder="e.g. John Smith"
+          required
+          autocomplete="name"
+        />
+      </div>
+
+      <!-- Narrative -->
+      <div class="field">
+        <label for="narrative">Record of Gospel Outreach</label>
+        <textarea
+          id="narrative"
+          name="narrative"
+          placeholder="Describe what happened — conversations, Bibles given, prayers, door addresses visited, highlights, anything the Lord did… Please include as much detail as possible. The information will be digested by AI and used to build our outreach records."
+          required
+        ></textarea>
+      </div>
+
+      <!-- File upload -->
+      <div class="field">
+        <label>Photos / Videos <span class="opt">(optional)</span></label>
+        <div class="upload-zone" id="uploadZone">
+          <input
+            type="file"
+            id="mediaInput"
+            name="media"
+            accept="image/*,video/*"
+            multiple
+          />
+          <div class="icon">📷</div>
+          <p><strong>Tap to choose</strong> or drag files here<br>
+          Images and videos · No size limit</p>
+        </div>
+        <div id="fileList"></div>
+        <div class="progress-wrap" id="progressWrap">
+          <div class="progress-label">
+            <span id="progressText">Uploading…</span>
+            <span id="progressPct">0%</span>
+          </div>
+          <div class="progress-bar-bg">
+            <div class="progress-bar-fill" id="progressFill"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Cloudflare Turnstile -->
+      <div class="turnstile-wrap">
+        <div class="cf-turnstile" data-sitekey="0x4AAAAAAC8mmn3dRc-ViE7G" data-theme="light"></div>
+      </div>
+
+      <button type="submit" class="btn-submit" id="submitBtn">Submit Report</button>
+
+      <div class="msg" id="statusMsg"></div>
+
+    </form>
+  </div>
+
+  <footer>
+    Your submission is saved securely. Media is accessible to team members only.
+  </footer>
+
+  <script>
+    // ─── CONFIG ───────────────────────────────────────────────────────────────
+    const GAS_URL     = 'https://script.google.com/macros/s/AKfycbxVymZVQ_lhLkCzcu1dnoySEkrEUEqaFZYWq4E6yRiA8eFxvlAGSivo1V8zhdEhcAYaWQ/exec';
+    const CHUNK_SIZE  = 5 * 1024 * 1024;         // 5 MB per chunk
+    const MAX_RETRIES = 3;
+
+    // ─── STATE ────────────────────────────────────────────────────────────────
+    let selectedFiles = [];
+
+    // ─── FILE INPUT ───────────────────────────────────────────────────────────
+    const mediaInput  = document.getElementById('mediaInput');
+    const fileList    = document.getElementById('fileList');
+    const uploadZone  = document.getElementById('uploadZone');
+
+    mediaInput.addEventListener('change', () => {
+      [...mediaInput.files].forEach(addFile);
+      mediaInput.value = '';   // reset so same file can be re-added if removed
+    });
+
+    // Drag-and-drop styling
+    uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag'); });
+    uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag'));
+    uploadZone.addEventListener('drop', e => {
+      e.preventDefault();
+      uploadZone.classList.remove('drag');
+      [...e.dataTransfer.files].forEach(addFile);
+    });
+
+    function addFile(file) {
+      if (selectedFiles.find(f => f.name === file.name && f.size === file.size)) return;
+      selectedFiles.push(file);
+      renderFileList();
+    }
+
+    function removeFile(idx) {
+      selectedFiles.splice(idx, 1);
+      renderFileList();
+    }
+
+    function renderFileList() {
+      const totalMB = (selectedFiles.reduce((s,f) => s+f.size, 0) / 1024 / 1024).toFixed(1);
+      fileList.innerHTML = selectedFiles.map((f, i) => `
+        <div class="file-item">
+          <span class="fname" title="${esc(f.name)}">${esc(f.name)}</span>
+          <span class="fsize">${(f.size/1024/1024).toFixed(1)} MB</span>
+          <button type="button" class="fremove" onclick="removeFile(${i})" aria-label="Remove">✕</button>
+        </div>
+      `).join('');
+      if (selectedFiles.length > 1) {
+        fileList.innerHTML += `<div style="font-size:.8rem;color:var(--gray);text-align:right;margin-top:2px">${selectedFiles.length} files · ${totalMB} MB total</div>`;
+      }
+    }
+
+    function esc(str) {
+      return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    // ─── PROGRESS ─────────────────────────────────────────────────────────────
+    function setProgress(pct, label) {
+      document.getElementById('progressWrap').classList.add('show');
+      document.getElementById('progressFill').style.width = pct + '%';
+      document.getElementById('progressPct').textContent  = Math.round(pct) + '%';
+      document.getElementById('progressText').textContent = label || 'Uploading…';
+    }
+    function hideProgress() {
+      document.getElementById('progressWrap').classList.remove('show');
+    }
+
+    // ─── STATUS MESSAGES ──────────────────────────────────────────────────────
+    function showMsg(type, html) {
+      const el = document.getElementById('statusMsg');
+      el.className = 'msg show ' + type;
+      el.innerHTML = html;
+      el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+    function hideMsg() {
+      const el = document.getElementById('statusMsg');
+      el.className = 'msg';
+    }
+
+    // ─── GAS CALL (fetch + text/plain to avoid CORS preflight) ────────────────
+    async function gasCall(payload) {
+      const res = await fetch(GAS_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload)
+      });
+      if (!res.ok) throw new Error('Server error ' + res.status);
+      return res.json();
+    }
+
+    // ─── CHUNKED UPLOAD TO GOOGLE DRIVE ───────────────────────────────────────
+    async function uploadFile(file, fileIndex, totalFiles) {
+      // Step 1: Get resumable session URI from GAS
+      const { sessionUri } = await gasCall({
+        action: 'getUploadUrl',
+        fileName: file.name,
+        mimeType: file.type || 'application/octet-stream'
+      });
+
+      // Restore from sessionStorage if a previous attempt stored it
+      const storeKey = `upload_${file.name}_${file.size}`;
+      let resumeUri   = sessionStorage.getItem(storeKey + '_uri')   || sessionUri;
+      let startByte   = parseInt(sessionStorage.getItem(storeKey + '_offset') || '0', 10);
+
+      sessionStorage.setItem(storeKey + '_uri', resumeUri);
+
+      // Step 2: Upload chunks
+      const totalBytes = file.size;
+      let offset = startByte;
+
+      while (offset < totalBytes) {
+        const end   = Math.min(offset + CHUNK_SIZE, totalBytes);
+        const chunk = file.slice(offset, end);
+
+        let attempt = 0;
+        let delay   = 1000;
+
+        while (attempt < MAX_RETRIES) {
+          try {
+            const res = await fetch(resumeUri, {
+              method: 'PUT',
+              headers: {
+                'Content-Range': `bytes ${offset}-${end - 1}/${totalBytes}`,
+                'Content-Type':  file.type || 'application/octet-stream'
+              },
+              body: chunk
+            });
+
+            if (res.status === 200 || res.status === 201) {
+              // Upload complete — return Drive file ID from response body
+              const body = await res.json();
+              sessionStorage.removeItem(storeKey + '_uri');
+              sessionStorage.removeItem(storeKey + '_offset');
+              return body.id;
+            }
+
+            if (res.status === 308) {
+              // Chunk accepted — advance offset
+              const range = res.headers.get('Range');
+              offset = range ? parseInt(range.split('-')[1], 10) + 1 : end;
+              sessionStorage.setItem(storeKey + '_offset', offset);
+
+              // Update overall progress
+              const fileBase  = fileIndex / totalFiles;
+              const fileShare = 1 / totalFiles;
+              const pct = (fileBase + fileShare * (offset / totalBytes)) * 100;
+              setProgress(pct, `Uploading file ${fileIndex + 1} of ${totalFiles}…`);
+              break;
+            }
+
+            if (res.status === 429 || res.status >= 500) {
+              // Retryable — back off
+              await sleep(delay);
+              delay = Math.min(delay * 2, 32000);
+              attempt++;
+              continue;
+            }
+
+            throw new Error(`Drive API error ${res.status}`);
+
+          } catch (err) {
+            if (attempt >= MAX_RETRIES - 1) throw err;
+            await sleep(delay);
+            delay = Math.min(delay * 2, 32000);
+            attempt++;
+          }
+        }
+      }
+
+      throw new Error('Upload loop exited unexpectedly');
+    }
+
+    function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+    // ─── FORM SUBMIT ──────────────────────────────────────────────────────────
+    document.getElementById('outreachForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      hideMsg();
+
+      const fullName  = document.getElementById('fullName').value.trim();
+      const narrative = document.getElementById('narrative').value.trim();
+      const honeypot  = document.getElementById('website').value;
+
+      // Honeypot check
+      if (honeypot) return;
+
+      // Client-side validation
+      if (!fullName) {
+        showMsg('error', 'Please enter your full name.');
+        document.getElementById('fullName').focus();
+        return;
+      }
+      if (!narrative) {
+        showMsg('error', 'Please fill in the outreach record before submitting.');
+        document.getElementById('narrative').focus();
+        return;
+      }
+
+      // Turnstile token
+      const turnstileToken = document.querySelector('[name="cf-turnstile-response"]')?.value;
+      if (!turnstileToken) {
+        showMsg('error', 'Please complete the security check.');
+        return;
+      }
+
+      const submitBtn = document.getElementById('submitBtn');
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Submitting…';
+
+      try {
+        // Upload files (if any)
+        const fileIds = [];
+        if (selectedFiles.length > 0) {
+          setProgress(0, `Uploading file 1 of ${selectedFiles.length}…`);
+          for (let i = 0; i < selectedFiles.length; i++) {
+            const id = await uploadFile(selectedFiles[i], i, selectedFiles.length);
+            fileIds.push(id);
+          }
+          setProgress(100, 'Upload complete');
+        }
+
+        // Submit text record
+        submitBtn.textContent = 'Saving record…';
+        const result = await gasCall({
+          action: 'submitRecord',
+          fullName,
+          narrative,
+          timestamp: new Date().toISOString(),
+          fileIds,
+          turnstileToken
+        });
+
+        if (result.status === 'success') {
+          hideProgress();
+          showMsg('success', `
+            <strong>Thank you, ${esc(fullName)}!</strong><br>
+            Your report has been saved. May the Lord bless the seeds sown today 🌱
+          `);
+          // Reset form
+          document.getElementById('outreachForm').reset();
+          selectedFiles = [];
+          renderFileList();
+          // Reset Turnstile
+          if (window.turnstile) turnstile.reset();
+        } else {
+          throw new Error(result.error || 'Unexpected response');
+        }
+
+      } catch (err) {
+        console.error(err);
+        showMsg('error', `Something went wrong: ${err.message}.<br>Please try again or contact the admin.`);
+      } finally {
+        submitBtn.disabled  = false;
+        submitBtn.textContent = 'Submit Report';
+      }
+    });
+  </script>
+</body>
+</html>
