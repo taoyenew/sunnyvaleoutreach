@@ -272,7 +272,7 @@
           />
           <div class="icon">📷</div>
           <p><strong>Tap to choose</strong> or drag files here<br>
-          Images (incl. HEIC) · Videos (MP4, MOV, M4V) · No size limit<br>
+          Images (incl. HEIC) · Videos (MP4, MOV, M4V) · Max 35 MB per file<br>
           <span style="font-size:.8em;color:var(--green)">HEIC photos auto-converted to JPG</span></p>
         </div>
         <div id="fileList"></div>
@@ -308,9 +308,7 @@
     document.getElementById('eventDate').valueAsDate = new Date();
 
     // ─── CONFIG ───────────────────────────────────────────────────────────────
-    const GAS_URL     = 'https://script.google.com/macros/s/AKfycbxVymZVQ_lhLkCzcu1dnoySEkrEUEqaFZYWq4E6yRiA8eFxvlAGSivo1V8zhdEhcAYaWQ/exec';
-    const CHUNK_SIZE  = 5 * 1024 * 1024;         // 5 MB per chunk
-    const MAX_RETRIES = 3;
+    const GAS_URL = 'https://script.google.com/macros/s/AKfycbxVymZVQ_lhLkCzcu1dnoySEkrEUEqaFZYWq4E6yRiA8eFxvlAGSivo1V8zhdEhcAYaWQ/exec';
 
     // ─── CONFIG: accepted video extensions ────────────────────────────────────
     const ACCEPTED_VIDEO_EXTS = ['mp4', 'mov', 'm4v', 'webm', '3gp'];
@@ -369,8 +367,15 @@
       return file; // all other formats pass through unchanged
     }
 
+    const MAX_FILE_SIZE = 35 * 1024 * 1024; // 35 MB
+
     async function addFile(file) {
       if (selectedFiles.find(f => f.name === file.name && f.size === file.size)) return;
+
+      if (file.size > MAX_FILE_SIZE) {
+        showMsg('error', `<strong>${esc(file.name)}</strong> is too large (${(file.size/1024/1024).toFixed(1)} MB). Max 35 MB per file.`);
+        return;
+      }
 
       // Show a temporary "Converting…" placeholder for HEIC files
       const ext = file.name.split('.').pop().toLowerCase();
@@ -452,90 +457,47 @@
       return res.json();
     }
 
-    // ─── CHUNKED UPLOAD TO GOOGLE DRIVE ───────────────────────────────────────
+    // ─── UPLOAD FILE VIA GAS (base64) ───────────────────────────────────────
+    // File is read as base64 in the browser, sent to GAS, which decodes and
+    // writes to Google Drive. No CORS issues. Works for files up to ~35 MB.
+
     async function uploadFile(file, fileIndex, totalFiles) {
-      // Step 1: Get resumable session URI from GAS
-      const { sessionUri } = await gasCall({
-        action: 'getUploadUrl',
+      setProgress(0, `Reading file ${fileIndex + 1} of ${totalFiles}…`);
+
+      // Read file as base64
+      const base64 = await fileToBase64(file);
+
+      setProgress(30, `Uploading file ${fileIndex + 1} of ${totalFiles}…`);
+
+      // Send to GAS
+      const result = await gasCall({
+        action: 'uploadFile',
         fileName: file.name,
         mimeType: file.type || 'application/octet-stream',
-        origin: window.location.origin
+        fileData: base64
       });
 
-      // Restore from sessionStorage if a previous attempt stored it
-      const storeKey = `upload_${file.name}_${file.size}`;
-      let resumeUri   = sessionStorage.getItem(storeKey + '_uri')   || sessionUri;
-      let startByte   = parseInt(sessionStorage.getItem(storeKey + '_offset') || '0', 10);
+      if (result.error) throw new Error(result.error);
 
-      sessionStorage.setItem(storeKey + '_uri', resumeUri);
+      // Update progress
+      const pct = ((fileIndex + 1) / totalFiles) * 100;
+      setProgress(pct, `Uploaded file ${fileIndex + 1} of ${totalFiles}`);
 
-      // Step 2: Upload chunks
-      const totalBytes = file.size;
-      let offset = startByte;
-
-      while (offset < totalBytes) {
-        const end   = Math.min(offset + CHUNK_SIZE, totalBytes);
-        const chunk = file.slice(offset, end);
-
-        let attempt = 0;
-        let delay   = 1000;
-
-        while (attempt < MAX_RETRIES) {
-          try {
-            const res = await fetch(resumeUri, {
-              method: 'PUT',
-              headers: {
-                'Content-Range': `bytes ${offset}-${end - 1}/${totalBytes}`,
-                'Content-Type':  file.type || 'application/octet-stream'
-              },
-              body: chunk
-            });
-
-            if (res.status === 200 || res.status === 201) {
-              // Upload complete — return Drive file ID from response body
-              const body = await res.json();
-              sessionStorage.removeItem(storeKey + '_uri');
-              sessionStorage.removeItem(storeKey + '_offset');
-              return body.id;
-            }
-
-            if (res.status === 308) {
-              // Chunk accepted — advance offset
-              const range = res.headers.get('Range');
-              offset = range ? parseInt(range.split('-')[1], 10) + 1 : end;
-              sessionStorage.setItem(storeKey + '_offset', offset);
-
-              // Update overall progress
-              const fileBase  = fileIndex / totalFiles;
-              const fileShare = 1 / totalFiles;
-              const pct = (fileBase + fileShare * (offset / totalBytes)) * 100;
-              setProgress(pct, `Uploading file ${fileIndex + 1} of ${totalFiles}…`);
-              break;
-            }
-
-            if (res.status === 429 || res.status >= 500) {
-              // Retryable — back off
-              await sleep(delay);
-              delay = Math.min(delay * 2, 32000);
-              attempt++;
-              continue;
-            }
-
-            throw new Error(`Drive API error ${res.status}`);
-
-          } catch (err) {
-            if (attempt >= MAX_RETRIES - 1) throw err;
-            await sleep(delay);
-            delay = Math.min(delay * 2, 32000);
-            attempt++;
-          }
-        }
-      }
-
-      throw new Error('Upload loop exited unexpectedly');
+      return result.fileId;
     }
 
-    function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+    function fileToBase64(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          // reader.result is "data:mime;base64,XXXX" — strip the prefix
+          const base64 = reader.result.split(',')[1];
+          resolve(base64);
+        };
+        reader.onerror = () => reject(new Error('Failed to read file'));
+        reader.readAsDataURL(file);
+      });
+    }
 
     // ─── FORM SUBMIT ──────────────────────────────────────────────────────────
     document.getElementById('outreachForm').addEventListener('submit', async (e) => {
