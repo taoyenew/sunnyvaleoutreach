@@ -7,6 +7,8 @@
 
   <!-- Cloudflare Turnstile -->
   <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+  <!-- HEIC → JPG conversion -->
+  <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
 
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -245,7 +247,8 @@
           />
           <div class="icon">📷</div>
           <p><strong>Tap to choose</strong> or drag files here<br>
-          Images and videos · No size limit</p>
+          Images (incl. HEIC) · Videos (MP4, MOV, M4V) · No size limit<br>
+          <span style="font-size:.8em;color:var(--green)">HEIC photos auto-converted to JPG</span></p>
         </div>
         <div id="fileList"></div>
         <div class="progress-wrap" id="progressWrap">
@@ -281,6 +284,10 @@
     const CHUNK_SIZE  = 5 * 1024 * 1024;         // 5 MB per chunk
     const MAX_RETRIES = 3;
 
+    // ─── CONFIG: accepted video extensions ────────────────────────────────────
+    const ACCEPTED_VIDEO_EXTS = ['mp4', 'mov', 'm4v', 'webm', '3gp'];
+    const REJECTED_VIDEO_EXTS = ['avi', 'wmv', 'mkv', 'flv', 'f4v', 'mpeg', 'mpg'];
+
     // ─── STATE ────────────────────────────────────────────────────────────────
     let selectedFiles = [];
 
@@ -290,7 +297,7 @@
     const uploadZone  = document.getElementById('uploadZone');
 
     mediaInput.addEventListener('change', () => {
-      [...mediaInput.files].forEach(addFile);
+      [...mediaInput.files].forEach(f => addFile(f));
       mediaInput.value = '';   // reset so same file can be re-added if removed
     });
 
@@ -300,12 +307,63 @@
     uploadZone.addEventListener('drop', e => {
       e.preventDefault();
       uploadZone.classList.remove('drag');
-      [...e.dataTransfer.files].forEach(addFile);
+      [...e.dataTransfer.files].forEach(f => addFile(f));
     });
 
-    function addFile(file) {
+    // ─── FILE PROCESSING: convert HEIC→JPG, reject unsupported video ──────────
+    async function processFile(file) {
+      const ext  = file.name.split('.').pop().toLowerCase();
+      const type = file.type.toLowerCase();
+
+      // Reject unsupported video formats
+      if (REJECTED_VIDEO_EXTS.includes(ext)) {
+        showMsg('error',
+          `<strong>${esc(file.name)}</strong> is not supported (${ext.toUpperCase()}).<br>
+           Please convert it to MP4 or MOV first.`);
+        return null;
+      }
+
+      // Convert HEIC/HEIF → JPG
+      const isHeic = ext === 'heic' || ext === 'heif'
+                  || type === 'image/heic' || type === 'image/heif';
+      if (isHeic) {
+        try {
+          const blob = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.88 });
+          const converted = Array.isArray(blob) ? blob[0] : blob;
+          const newName   = file.name.replace(/\.(heic|heif)$/i, '.jpg');
+          return new File([converted], newName, { type: 'image/jpeg' });
+        } catch (err) {
+          console.warn('HEIC conversion failed, uploading original:', err);
+          return file; // fall back to original if conversion fails
+        }
+      }
+
+      return file; // all other formats pass through unchanged
+    }
+
+    async function addFile(file) {
       if (selectedFiles.find(f => f.name === file.name && f.size === file.size)) return;
-      selectedFiles.push(file);
+
+      // Show a temporary "Converting…" placeholder for HEIC files
+      const ext = file.name.split('.').pop().toLowerCase();
+      const isHeic = ext === 'heic' || ext === 'heif';
+      if (isHeic) {
+        const placeholder = document.createElement('div');
+        placeholder.className = 'file-item';
+        placeholder.id = 'converting-' + file.name;
+        placeholder.innerHTML = `<span class="fname">⏳ Converting ${esc(file.name)}…</span>`;
+        fileList.appendChild(placeholder);
+      }
+
+      const processed = await processFile(file);
+
+      // Remove placeholder
+      const ph = document.getElementById('converting-' + file.name);
+      if (ph) ph.remove();
+
+      if (!processed) return; // rejected (unsupported format)
+
+      selectedFiles.push(processed);
       renderFileList();
     }
 
