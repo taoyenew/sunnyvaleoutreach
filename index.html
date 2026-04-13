@@ -75,6 +75,7 @@
     label .opt { font-weight: 400; color: var(--gray); }
 
     input[type="text"],
+    input[type="date"],
     textarea {
       width: 100%;
       border: 1.5px solid var(--border);
@@ -88,6 +89,7 @@
       outline: none;
     }
     input[type="text"]:focus,
+    input[type="date"]:focus,
     textarea:focus { border-color: var(--green); }
 
     textarea { resize: vertical; min-height: 160px; line-height: 1.6; }
@@ -223,6 +225,29 @@
         />
       </div>
 
+      <!-- Date of Outreach -->
+      <div class="field">
+        <label for="eventDate">Date of Outreach</label>
+        <input
+          type="date"
+          id="eventDate"
+          name="eventDate"
+          required
+        />
+      </div>
+
+      <!-- Venue / Location -->
+      <div class="field">
+        <label for="venue">Venue <span class="opt">(park name, street name, etc.)</span></label>
+        <input
+          type="text"
+          id="venue"
+          name="venue"
+          placeholder="e.g. Washington Park, Hollenbeck Ave, Sunnyvale Library"
+          required
+        />
+      </div>
+
       <!-- Narrative -->
       <div class="field">
         <label for="narrative">Record of Gospel Outreach</label>
@@ -279,6 +304,9 @@
   </footer>
 
   <script>
+    // ─── DEFAULT DATE TO TODAY ───────────────────────────────────────────────
+    document.getElementById('eventDate').valueAsDate = new Date();
+
     // ─── CONFIG ───────────────────────────────────────────────────────────────
     const GAS_URL     = 'https://script.google.com/macros/s/AKfycbxVymZVQ_lhLkCzcu1dnoySEkrEUEqaFZYWq4E6yRiA8eFxvlAGSivo1V8zhdEhcAYaWQ/exec';
     const CHUNK_SIZE  = 5 * 1024 * 1024;         // 5 MB per chunk
@@ -514,6 +542,8 @@
       hideMsg();
 
       const fullName  = document.getElementById('fullName').value.trim();
+      const eventDate = document.getElementById('eventDate').value;
+      const venue     = document.getElementById('venue').value.trim();
       const narrative = document.getElementById('narrative').value.trim();
       const honeypot  = document.getElementById('website').value;
 
@@ -524,6 +554,16 @@
       if (!fullName) {
         showMsg('error', 'Please enter your full name.');
         document.getElementById('fullName').focus();
+        return;
+      }
+      if (!eventDate) {
+        showMsg('error', 'Please select the date of outreach.');
+        document.getElementById('eventDate').focus();
+        return;
+      }
+      if (!venue) {
+        showMsg('error', 'Please enter the venue or location name.');
+        document.getElementById('venue').focus();
         return;
       }
       if (!narrative) {
@@ -560,6 +600,8 @@
         const result = await gasCall({
           action: 'submitRecord',
           fullName,
+          eventDate,
+          venue,
           narrative,
           timestamp: new Date().toISOString(),
           fileIds,
