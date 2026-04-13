@@ -458,7 +458,8 @@
       const { sessionUri } = await gasCall({
         action: 'getUploadUrl',
         fileName: file.name,
-        mimeType: file.type || 'application/octet-stream'
+        mimeType: file.type || 'application/octet-stream',
+        origin: window.location.origin
       });
 
       // Restore from sessionStorage if a previous attempt stored it
